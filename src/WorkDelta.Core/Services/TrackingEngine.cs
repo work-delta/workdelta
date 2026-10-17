@@ -13,6 +13,7 @@ public sealed class TrackingEngine(
 {
     private static readonly TimeSpan SnapshotQuietPeriod = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan MaximumSnapshotInterval = TimeSpan.FromMinutes(10);
+    private const long MaximumActivityHashSize = 64L * 1024 * 1024;
     private readonly WorkDeltaStore _store = store;
     private readonly GitSnapshotStore _snapshotStore = snapshotStore;
     private readonly PathPolicy _pathPolicy = pathPolicy;
@@ -113,6 +114,45 @@ public sealed class TrackingEngine(
         CancellationToken cancellationToken = default) =>
         _snapshotStore.GetSnapshotChangesAsync(project.Id, commitId, cancellationToken);
 
+    public async Task<IReadOnlyList<ReportFileDetail>> GetReportFileDetailsAsync(
+        ProjectRecord project,
+        IReadOnlyCollection<string> activityFiles,
+        DateOnly startDate,
+        DateOnly endDate,
+        TimeZoneInfo timeZone,
+        CancellationToken cancellationToken = default)
+    {
+        if (endDate < startDate)
+        {
+            (startDate, endDate) = (endDate, startDate);
+        }
+
+        var startLocal = startDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        var endLocal = endDate.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        var startUtc = TimeZoneInfo.ConvertTimeToUtc(startLocal, timeZone);
+        var endUtc = TimeZoneInfo.ConvertTimeToUtc(endLocal, timeZone);
+        var totals = new Dictionary<string, (int Added, int Deleted)>(StringComparer.OrdinalIgnoreCase);
+        var snapshots = await _store.GetSnapshotsAsync(project.Id, cancellationToken);
+        foreach (var snapshot in snapshots.Where(item =>
+                     item.Kind != "baseline" && item.CreatedAt >= startUtc && item.CreatedAt < endUtc))
+        {
+            var changes = await _snapshotStore.GetSnapshotChangesAsync(project.Id, snapshot.CommitId, cancellationToken);
+            foreach (var change in changes)
+            {
+                var current = totals.GetValueOrDefault(change.Path);
+                totals[change.Path] = (current.Added + change.AddedLines, current.Deleted + change.DeletedLines);
+            }
+        }
+
+        return activityFiles
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Select(path => totals.TryGetValue(path, out var lines)
+                ? new ReportFileDetail(path, lines.Added, lines.Deleted, true)
+                : new ReportFileDetail(path, 0, 0, false))
+            .ToArray();
+    }
+
     public async Task RestoreFilesAsync(
         ProjectRecord project,
         string commitId,
@@ -202,10 +242,19 @@ public sealed class TrackingEngine(
                 return;
             }
             await _store.RecordChangesAsync(project, meaningfulChanges, DateTimeOffset.UtcNow, _shutdown.Token);
+            var snapshotEligibleChanges = meaningfulChanges
+                .Where(change => change.Kind == FileChangeKind.Deleted ||
+                                 _pathPolicy.IsTrackableFile(project.Path, change.FullPath))
+                .ToArray();
+            if (snapshotEligibleChanges.Length == 0)
+            {
+                ActivityRecorded?.Invoke(this, new ActivityRecordedEventArgs(project, meaningfulChanges));
+                return;
+            }
             var pending = _snapshotChanges.GetOrAdd(
                 project.Id,
                 _ => new ConcurrentDictionary<string, FileChange>(StringComparer.OrdinalIgnoreCase));
-            foreach (var change in meaningfulChanges)
+            foreach (var change in snapshotEligibleChanges)
             {
                 pending[change.RelativePath] = change;
             }
@@ -235,7 +284,7 @@ public sealed class TrackingEngine(
                 continue;
             }
 
-            if (!_pathPolicy.IsTrackableFile(project.Path, change.FullPath))
+            if (!_pathPolicy.IsActivityFile(project.Path, change.FullPath))
             {
                 continue;
             }
@@ -243,7 +292,10 @@ public sealed class TrackingEngine(
             string? hash = null;
             try
             {
-                hash = await ComputeHashAsync(change.FullPath, cancellationToken);
+                if (new FileInfo(change.FullPath).Length <= MaximumActivityHashSize)
+                {
+                    hash = await ComputeHashAsync(change.FullPath, cancellationToken);
+                }
             }
             catch (IOException)
             {

@@ -83,6 +83,7 @@ public sealed class WorkDeltaStoreTests
         Assert.Equal(project.Name, report.ProjectName);
         Assert.Equal(1, report.FileCount);
         Assert.Equal(TimeSpan.FromMinutes(1), report.ActiveDuration);
+        Assert.Equal(["a.txt"], report.Files);
     }
 
     [Fact]

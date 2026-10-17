@@ -39,4 +39,31 @@ public sealed class PathPolicyTests
         Assert.True(policy.ShouldIgnore(root, Path.Combine(root, "keys.secret")));
         Assert.False(policy.ShouldIgnore(root, Path.Combine(root, "notes.txt")));
     }
+
+    [Theory]
+    [InlineData("evidence.pdf")]
+    [InlineData("documents.zip")]
+    [InlineData("photo.jpg")]
+    public void ShouldIgnoreActivity_BusinessBinaryFiles_ReturnsFalse(string relativePath)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "workdelta-policy-activity");
+        var fullPath = Path.Combine(root, relativePath);
+
+        var policy = new PathPolicy();
+
+        Assert.False(policy.ShouldIgnoreActivity(root, fullPath));
+        Assert.True(policy.ShouldIgnore(root, fullPath));
+    }
+
+    [Theory]
+    [InlineData("notes.tmp")]
+    [InlineData("debug.log")]
+    [InlineData("bin/output.txt")]
+    public void ShouldIgnoreActivity_KnownNoise_ReturnsTrue(string relativePath)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "workdelta-policy-activity-noise");
+        var fullPath = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        Assert.True(new PathPolicy().ShouldIgnoreActivity(root, fullPath));
+    }
 }

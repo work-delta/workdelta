@@ -68,14 +68,14 @@ internal sealed class ProjectMonitor : IDisposable
             }
 
             var changes = snapshot
-                .Where(item => !_pathPolicy.ShouldIgnore(_project.Path, item.Key))
+                .Where(item => !_pathPolicy.ShouldIgnoreActivity(_project.Path, item.Key))
                 .Select(item => new FileChange(
                     item.Key,
                     Path.GetRelativePath(_project.Path, item.Key).Replace('\\', '/'),
                     item.Value))
                 .Where(change => !change.RelativePath.StartsWith("..", StringComparison.Ordinal))
                 .Where(change => change.Kind == FileChangeKind.Deleted ||
-                                 _pathPolicy.IsTrackableFile(_project.Path, change.FullPath))
+                                 _pathPolicy.IsActivityFile(_project.Path, change.FullPath))
                 .ToArray();
             if (changes.Length > 0)
             {
@@ -90,7 +90,7 @@ internal sealed class ProjectMonitor : IDisposable
 
     private void Enqueue(string fullPath, FileChangeKind kind)
     {
-        if (_disposed || _pathPolicy.ShouldIgnore(_project.Path, fullPath))
+        if (_disposed || _pathPolicy.ShouldIgnoreActivity(_project.Path, fullPath))
         {
             return;
         }

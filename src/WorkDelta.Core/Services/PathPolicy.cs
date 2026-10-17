@@ -11,10 +11,14 @@ public sealed class PathPolicy
         "coverage", "packages", "vendor", "__pycache__", ".pytest_cache", ".mypy_cache"
     };
 
-    private static readonly HashSet<string> IgnoredExtensions = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> ActivityIgnoredExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".tmp", ".temp", ".log", ".lock", ".bak", ".swp", ".swo", ".user",
-        ".suo", ".pdb", ".dll", ".exe", ".obj", ".o", ".class", ".pyc",
+        ".suo", ".pdb", ".dll", ".exe", ".obj", ".o", ".class", ".pyc"
+    };
+
+    private static readonly HashSet<string> SnapshotIgnoredExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
         ".zip", ".7z", ".rar", ".gz", ".tar", ".png", ".jpg", ".jpeg",
         ".gif", ".webp", ".mp3", ".mp4", ".mov", ".avi", ".pdf", ".db",
         ".sqlite", ".sqlite3"
@@ -38,7 +42,13 @@ public sealed class PathPolicy
     public void RemoveCustomRules(string rootPath) =>
         _customRules.TryRemove(Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath)), out _);
 
-    public bool ShouldIgnore(string rootPath, string fullPath)
+    public bool ShouldIgnore(string rootPath, string fullPath) =>
+        ShouldIgnoreCore(rootPath, fullPath, ignoreSnapshotOnlyExtensions: true);
+
+    public bool ShouldIgnoreActivity(string rootPath, string fullPath) =>
+        ShouldIgnoreCore(rootPath, fullPath, ignoreSnapshotOnlyExtensions: false);
+
+    private bool ShouldIgnoreCore(string rootPath, string fullPath, bool ignoreSnapshotOnlyExtensions)
     {
         string relativePath;
         try
@@ -78,7 +88,9 @@ public sealed class PathPolicy
             return true;
         }
 
-        return IgnoredExtensions.Contains(Path.GetExtension(relativePath));
+        var extension = Path.GetExtension(relativePath);
+        return ActivityIgnoredExtensions.Contains(extension) ||
+               (ignoreSnapshotOnlyExtensions && SnapshotIgnoredExtensions.Contains(extension));
     }
 
     private static bool MatchesRule(string relativePath, string rule)
@@ -116,6 +128,27 @@ public sealed class PathPolicy
         {
             var info = new FileInfo(fullPath);
             return info.Length <= MaximumTrackedFileSize && !LooksBinary(fullPath);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    public bool IsActivityFile(string rootPath, string fullPath)
+    {
+        if (ShouldIgnoreActivity(rootPath, fullPath) || !File.Exists(fullPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            return (File.GetAttributes(fullPath) & FileAttributes.Directory) == 0;
         }
         catch (IOException)
         {

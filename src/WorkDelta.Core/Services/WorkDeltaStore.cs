@@ -459,7 +459,11 @@ public sealed class WorkDeltaStore
                 entries.Count,
                 entries.SelectMany(item => item.Files).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                 entries.Sum(item => item.ChangeCount),
-                TimeSpan.FromTicks(entries.Sum(item => item.ActiveDuration.Ticks))));
+                TimeSpan.FromTicks(entries.Sum(item => item.ActiveDuration.Ticks)),
+                entries.SelectMany(item => item.Files)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()));
         }
 
         return reports

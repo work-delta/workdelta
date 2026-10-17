@@ -21,9 +21,10 @@ TrackingEngine
 └── Repositories\<project-id>\worktree\.git
 ```
 
-The tracked source folder is never initialized as a Git repository. Only text-like files under 10 MB are
-copied into the isolated mirror. Common build output, dependencies, caches, media, databases and temporary
-files are excluded.
+The tracked source folder is never initialized as a Git repository. The activity timeline records meaningful
+changes to business files, including documents, PDFs, images and archives. Only text-like files under 10 MB
+are copied into the isolated mirror so that line diffs and restoration remain safe. Common build output,
+dependencies, caches and temporary files are excluded.
 
 SQLite owns projects, identities, file activity, work sessions and snapshot metadata. Git owns content
 history and diffable checkpoints. This boundary allows a future backup backend without changing work-log
@@ -38,9 +39,11 @@ source folder, then creates a new `restore` checkpoint so the operation is rever
 ## Reports and backups
 
 Daily timelines can be queried by local calendar date. Range reports aggregate one or all projects for a
-week, month or custom period. A `.workdelta` backup is a ZIP-compatible archive containing a consistent
-SQLite backup, the isolated Git repositories and a format manifest. Import occurs before the database is
-opened and uses a temporary rollback copy if replacement fails.
+week, month or custom period. Markdown exports include every changed file and added/deleted line totals for
+text files with checkpoints; binary files are explicitly marked as having no text-line statistics. A
+`.workdelta` backup is a ZIP-compatible archive containing a consistent SQLite backup, the isolated Git
+repositories and a format manifest. Import occurs before the database is opened and uses a temporary
+rollback copy if replacement fails.
 
 ## Project preferences
 

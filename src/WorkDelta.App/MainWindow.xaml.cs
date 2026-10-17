@@ -228,6 +228,29 @@ public partial class MainWindow : Window
                 }
                 markdown.AppendLine();
             }
+
+            var files = entries
+                .SelectMany(item => item.Files)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var fileDetails = await _app.Engine.GetReportFileDetailsAsync(
+                project,
+                files,
+                selectedDate,
+                selectedDate,
+                TimeZoneInfo.Local);
+            markdown.AppendLine($"## {Localizer.Get("FileChangeDetails")}")
+                .AppendLine()
+                .AppendLine($"| {Localizer.Get("FileName")} | {Localizer.Get("LineChanges")} |")
+                .AppendLine("| --- | ---: |");
+            foreach (var file in fileDetails)
+            {
+                var lineChanges = file.HasLineStatistics
+                    ? $"+{file.AddedLines} / -{file.DeletedLines}"
+                    : Localizer.Get("NoTextLineStatistics");
+                markdown.AppendLine($"| `{EscapeMarkdown(file.Path)}` | {lineChanges} |");
+            }
+            markdown.AppendLine();
         }
 
         await File.WriteAllTextAsync(dialog.FileName, markdown.ToString(), new UTF8Encoding(true));
@@ -389,6 +412,9 @@ public partial class MainWindow : Window
     }
 
     private static string FormatDuration(TimeSpan duration) => Localizer.Duration(duration);
+
+    private static string EscapeMarkdown(string value) =>
+        value.Replace("|", "\\|", StringComparison.Ordinal).Replace("`", "\\`", StringComparison.Ordinal);
 
     private sealed record LanguageChoice(string Code, string Name);
 }

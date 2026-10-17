@@ -109,19 +109,55 @@ public partial class ReportsWindow : Window
             builder.AppendLine($"| {row.ProjectName.Replace("|", "\\|")} | {row.SessionCount} | {row.DurationText} | {row.FileCount} | {row.ChangeCount} |");
         }
         builder.AppendLine().AppendLine($"**{TotalText.Text}**");
+
+        var start = DateOnly.FromDateTime(StartDatePicker.SelectedDate.Value);
+        var end = DateOnly.FromDateTime(EndDatePicker.SelectedDate.Value);
+        foreach (var row in _rows)
+        {
+            var project = await _app.Store.GetProjectAsync(row.ProjectId);
+            if (project is null)
+            {
+                continue;
+            }
+
+            var files = await _app.Engine.GetReportFileDetailsAsync(
+                project,
+                row.Files,
+                start,
+                end,
+                TimeZoneInfo.Local);
+            builder.AppendLine()
+                .AppendLine($"## {EscapeMarkdown(row.ProjectName)} · {Localizer.Get("FileChangeDetails")}")
+                .AppendLine()
+                .AppendLine($"| {Localizer.Get("FileName")} | {Localizer.Get("LineChanges")} |")
+                .AppendLine("| --- | ---: |");
+            foreach (var file in files)
+            {
+                var lineChanges = file.HasLineStatistics
+                    ? $"+{file.AddedLines} / -{file.DeletedLines}"
+                    : Localizer.Get("NoTextLineStatistics");
+                builder.AppendLine($"| `{EscapeMarkdown(file.Path)}` | {lineChanges} |");
+            }
+        }
+
         await File.WriteAllTextAsync(dialog.FileName, builder.ToString(), new UTF8Encoding(true));
         MessageBox.Show(this, Localizer.Get("ReportExported"), Localizer.Get("AppName"));
     }
+
+    private static string EscapeMarkdown(string value) =>
+        value.Replace("|", "\\|", StringComparison.Ordinal).Replace("`", "\\`", StringComparison.Ordinal);
 
     private static string FormatDuration(TimeSpan duration) => Localizer.Duration(duration);
 
     private sealed record ProjectChoice(string? Id, string Name);
     private sealed class ReportRow(ProjectActivityReport report)
     {
+        public string ProjectId => report.ProjectId;
         public string ProjectName => report.ProjectName;
         public int SessionCount => report.SessionCount;
         public int FileCount => report.FileCount;
         public int ChangeCount => report.ChangeCount;
+        public IReadOnlyList<string> Files => report.Files;
         public string DurationText => FormatDuration(report.ActiveDuration);
     }
 }
