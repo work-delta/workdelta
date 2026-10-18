@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
   "repository": "work-delta/workdelta",
-  "updatedAt": "2026-10-17T18:29:09.553Z",
+  "updatedAt": "2026-10-18T18:37:36.095Z",
   "releaseCount": 4,
   "totals": {
-    "installerDownloads": 6,
+    "installerDownloads": 9,
     "portableDownloads": 2,
-    "packageDownloads": 8
+    "packageDownloads": 11
   },
   "latestRelease": {
     "tagName": "v0.2.2",
     "publishedAt": "2026-10-17T03:56:20Z",
-    "installerDownloads": 0,
+    "installerDownloads": 3,
     "portableDownloads": 0,
-    "packageDownloads": 0
+    "packageDownloads": 3
   },
   "history": [
     {
@@ -80,6 +80,11 @@
       "date": "2026-10-18",
       "installerDownloads": 6,
       "packageDownloads": 8
+    },
+    {
+      "date": "2026-10-19",
+      "installerDownloads": 9,
+      "packageDownloads": 11
     }
   ]
 }
