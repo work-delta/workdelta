@@ -40,19 +40,53 @@ public sealed class PathPolicyTests
         Assert.False(policy.ShouldIgnore(root, Path.Combine(root, "notes.txt")));
     }
 
-    [Theory]
-    [InlineData("evidence.pdf")]
-    [InlineData("documents.zip")]
-    [InlineData("photo.jpg")]
-    public void ShouldIgnoreActivity_BusinessBinaryFiles_ReturnsFalse(string relativePath)
+    [Fact]
+    public void ShouldIgnoreActivity_Archive_ReturnsFalseWhileSnapshotIgnoresIt()
     {
         var root = Path.Combine(Path.GetTempPath(), "workdelta-policy-activity");
-        var fullPath = Path.Combine(root, relativePath);
+        var fullPath = Path.Combine(root, "documents.zip");
 
         var policy = new PathPolicy();
 
         Assert.False(policy.ShouldIgnoreActivity(root, fullPath));
         Assert.True(policy.ShouldIgnore(root, fullPath));
+    }
+
+    [Theory]
+    [InlineData("contract.docx")]
+    [InlineData("budget.xlsx")]
+    [InlineData("briefing.pptx")]
+    [InlineData("evidence.pdf")]
+    [InlineData("scan.ofd")]
+    [InlineData("draft.wps")]
+    [InlineData("receipt.jpg")]
+    public async Task IsTrackableFile_BusinessDocumentsAndScans_ReturnsTrue(string fileName)
+    {
+        var root = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(),
+            "WorkDelta.Tests",
+            Guid.NewGuid().ToString("N"))).FullName;
+        var fullPath = Path.Combine(root, fileName);
+        await File.WriteAllBytesAsync(fullPath, [0x50, 0x4b, 0x00, 0x01]);
+
+        var policy = new PathPolicy();
+
+        Assert.False(policy.ShouldIgnore(root, fullPath));
+        Assert.True(policy.IsBusinessDocument(fullPath));
+        Assert.True(policy.IsTrackableFile(root, fullPath));
+    }
+
+    [Fact]
+    public async Task IsTrackableFile_Archive_ReturnsFalse()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(
+            Path.GetTempPath(),
+            "WorkDelta.Tests",
+            Guid.NewGuid().ToString("N"))).FullName;
+        var fullPath = Path.Combine(root, "documents.zip");
+        await File.WriteAllBytesAsync(fullPath, [0x50, 0x4b, 0x00, 0x01]);
+
+        Assert.False(new PathPolicy().IsTrackableFile(root, fullPath));
     }
 
     [Theory]

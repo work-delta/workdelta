@@ -106,14 +106,37 @@ public sealed class GitSnapshotStore(string repositoriesRoot, PathPolicy pathPol
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var oldPath = string.IsNullOrWhiteSpace(change.OldPath) ? change.Path : change.OldPath;
-                    var oldText = parent is null ? string.Empty : ReadText(parent, oldPath);
-                    var newText = ReadText(commit, change.Path);
+                    var oldBlob = parent is null ? null : GetBlob(parent, oldPath);
+                    var newBlob = GetBlob(commit, change.Path);
+                    var isBinaryDocument = _pathPolicy.IsBusinessDocument(oldPath) ||
+                                           _pathPolicy.IsBusinessDocument(change.Path) ||
+                                           LooksBinary(oldBlob) ||
+                                           LooksBinary(newBlob);
+                    if (isBinaryDocument)
+                    {
+                        result.Add(new SnapshotFileChange(
+                            change.Path,
+                            FriendlyStatus(change.Status),
+                            0,
+                            0,
+                            false,
+                            oldBlob?.Size,
+                            newBlob?.Size,
+                            BuildBinarySummary(oldBlob?.Size, newBlob?.Size)));
+                        continue;
+                    }
+
+                    var oldText = ReadText(oldBlob);
+                    var newText = ReadText(newBlob);
                     var diff = BuildTextDiff(oldText, newText, change.Path);
                     result.Add(new SnapshotFileChange(
                         change.Path,
                         FriendlyStatus(change.Status),
                         diff.Added,
                         diff.Deleted,
+                        true,
+                        oldBlob?.Size,
+                        newBlob?.Size,
                         diff.Text));
                 }
 
@@ -336,9 +359,19 @@ public sealed class GitSnapshotStore(string repositoriesRoot, PathPolicy pathPol
         _ => CoreText.Choose("变化", "Changed")
     };
 
-    private static string ReadText(Commit commit, string path)
+    private static Blob? GetBlob(Commit commit, string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || commit.Tree[path]?.Target is not Blob blob)
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        return commit.Tree[path]?.Target as Blob;
+    }
+
+    private static string ReadText(Blob? blob)
+    {
+        if (blob is null)
         {
             return string.Empty;
         }
@@ -346,6 +379,53 @@ public sealed class GitSnapshotStore(string repositoriesRoot, PathPolicy pathPol
         using var stream = blob.GetContentStream();
         using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
         return reader.ReadToEnd();
+    }
+
+    private static bool LooksBinary(Blob? blob)
+    {
+        if (blob is null)
+        {
+            return false;
+        }
+
+        Span<byte> buffer = stackalloc byte[4096];
+        using var stream = blob.GetContentStream();
+        var read = stream.Read(buffer);
+        for (var index = 0; index < read; index++)
+        {
+            if (buffer[index] == 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string BuildBinarySummary(long? oldSize, long? newSize) =>
+        CoreText.Format(
+            "该办公文件的内容已完整备份，可以恢复到此版本。\n\n文件大小：{0} → {1}",
+            "This business file is fully backed up and can be restored to this version.\n\nFile size: {0} → {1}",
+            FormatFileSize(oldSize),
+            FormatFileSize(newSize));
+
+    private static string FormatFileSize(long? size)
+    {
+        if (size is null)
+        {
+            return CoreText.Choose("无", "none");
+        }
+
+        string[] units = ["B", "KB", "MB", "GB"];
+        var value = (double)size.Value;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return unit == 0 ? $"{value:0} {units[unit]}" : $"{value:0.##} {units[unit]}";
     }
 
     private static (string Text, int Added, int Deleted) BuildTextDiff(

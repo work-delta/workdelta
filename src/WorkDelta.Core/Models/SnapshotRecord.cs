@@ -7,4 +7,7 @@ public sealed record SnapshotFileChange(
     string Status,
     int AddedLines,
     int DeletedLines,
+    bool HasLineStatistics,
+    long? OldSize,
+    long? NewSize,
     string Diff);

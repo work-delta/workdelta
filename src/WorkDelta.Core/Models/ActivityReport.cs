@@ -15,6 +15,9 @@ public sealed record ReportFileDetail(
     string Path,
     int AddedLines,
     int DeletedLines,
-    bool HasLineStatistics);
+    bool HasLineStatistics,
+    bool IsBackedUp,
+    long? OldSize,
+    long? NewSize);
 
 public sealed record ProjectPreferences(string ProjectId, string IgnorePatterns);

@@ -60,6 +60,37 @@ public sealed class GitSnapshotStoreTests
         Assert.Equal("第一行\n旧内容", await File.ReadAllTextAsync(sourceFile));
     }
 
+    [Fact]
+    public async Task History_BacksUpBinaryBusinessFile_AndRestoresExactBytes()
+    {
+        var root = NewTemporaryDirectory();
+        var projectFolder = Directory.CreateDirectory(Path.Combine(root, "source")).FullName;
+        var sourceFile = Path.Combine(projectFolder, "contract.pdf");
+        byte[] original = [0x25, 0x50, 0x44, 0x46, 0x00, 0x01];
+        byte[] updated = [0x25, 0x50, 0x44, 0x46, 0x00, 0x02, 0x03, 0x04];
+        await File.WriteAllBytesAsync(sourceFile, original);
+        var project = new ProjectRecord("project3", "source", projectFolder, DateTimeOffset.UtcNow, null, null, false);
+        var identity = new AppIdentity("1234567890abcdef", "测试用户", "device1", "测试设备");
+        var store = new GitSnapshotStore(Path.Combine(root, "repositories"), new PathPolicy());
+        var baseline = await store.CreateBaselineAsync(project, identity);
+
+        await File.WriteAllBytesAsync(sourceFile, updated);
+        var latest = await store.CreateSnapshotAsync(
+            project,
+            [new FileChange(sourceFile, "contract.pdf", FileChangeKind.Modified)],
+            identity,
+            "更新合同");
+
+        var change = Assert.Single(await store.GetSnapshotChangesAsync(project.Id, latest.CommitId));
+        Assert.False(change.HasLineStatistics);
+        Assert.Equal(original.Length, change.OldSize);
+        Assert.Equal(updated.Length, change.NewSize);
+        Assert.Contains("6 B", change.Diff);
+
+        await store.RestoreFilesAsync(project, baseline.CommitId, ["contract.pdf"]);
+        Assert.Equal(original, await File.ReadAllBytesAsync(sourceFile));
+    }
+
     private static string NewTemporaryDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "WorkDelta.Tests", Guid.NewGuid().ToString("N"));

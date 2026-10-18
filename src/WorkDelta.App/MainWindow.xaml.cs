@@ -245,10 +245,7 @@ public partial class MainWindow : Window
                 .AppendLine("| --- | ---: |");
             foreach (var file in fileDetails)
             {
-                var lineChanges = file.HasLineStatistics
-                    ? $"+{file.AddedLines} / -{file.DeletedLines}"
-                    : Localizer.Get("NoTextLineStatistics");
-                markdown.AppendLine($"| `{EscapeMarkdown(file.Path)}` | {lineChanges} |");
+                markdown.AppendLine($"| `{EscapeMarkdown(file.Path)}` | {FileChangeFormatter.ForReport(file)} |");
             }
             markdown.AppendLine();
         }

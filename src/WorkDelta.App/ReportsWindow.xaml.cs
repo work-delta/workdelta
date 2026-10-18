@@ -133,10 +133,7 @@ public partial class ReportsWindow : Window
                 .AppendLine("| --- | ---: |");
             foreach (var file in files)
             {
-                var lineChanges = file.HasLineStatistics
-                    ? $"+{file.AddedLines} / -{file.DeletedLines}"
-                    : Localizer.Get("NoTextLineStatistics");
-                builder.AppendLine($"| `{EscapeMarkdown(file.Path)}` | {lineChanges} |");
+                builder.AppendLine($"| `{EscapeMarkdown(file.Path)}` | {FileChangeFormatter.ForReport(file)} |");
             }
         }
 

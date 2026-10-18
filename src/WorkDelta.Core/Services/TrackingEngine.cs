@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using LibGit2Sharp;
 using WorkDelta.Core.Models;
 using WorkDelta.Core.Localization;
 
@@ -11,6 +12,8 @@ public sealed class TrackingEngine(
     PathPolicy pathPolicy,
     AppIdentity identity) : IAsyncDisposable
 {
+    private const string SnapshotPolicySettingKey = "snapshot_policy_version";
+    private const string CurrentSnapshotPolicyVersion = "office-documents-v1";
     private static readonly TimeSpan SnapshotQuietPeriod = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan MaximumSnapshotInterval = TimeSpan.FromMinutes(10);
     private const long MaximumActivityHashSize = 64L * 1024 * 1024;
@@ -30,6 +33,11 @@ public sealed class TrackingEngine(
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         var projects = await _store.GetProjectsAsync(cancellationToken);
+        var needsSnapshotPolicyMigration = !string.Equals(
+            await _store.GetSettingValueAsync(SnapshotPolicySettingKey, cancellationToken),
+            CurrentSnapshotPolicyVersion,
+            StringComparison.Ordinal);
+        var snapshotPolicyMigrationSucceeded = true;
         foreach (var project in projects)
         {
             _pathPolicy.SetCustomRules(project.Path, await _store.GetIgnorePatternsAsync(project.Id, cancellationToken));
@@ -42,6 +50,39 @@ public sealed class TrackingEngine(
                 _lastSnapshotAt[project.Id] = project.LastSnapshotAt.Value;
             }
             StartMonitor(project);
+            if (needsSnapshotPolicyMigration)
+            {
+                snapshotPolicyMigrationSucceeded &= await TryReconcileAsync(project);
+            }
+        }
+
+        if (needsSnapshotPolicyMigration && snapshotPolicyMigrationSucceeded)
+        {
+            await _store.SetSettingValueAsync(
+                SnapshotPolicySettingKey,
+                CurrentSnapshotPolicyVersion,
+                cancellationToken);
+        }
+    }
+
+    private async Task<bool> TryReconcileAsync(ProjectRecord project)
+    {
+        try
+        {
+            await ReconcileAsync(project);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (LibGit2SharpException)
+        {
+            return false;
         }
     }
 
@@ -76,6 +117,7 @@ public sealed class TrackingEngine(
             if (updated is not null && Directory.Exists(updated.Path))
             {
                 StartMonitor(updated);
+                await ReconcileAsync(updated);
             }
         }
     }
@@ -131,7 +173,7 @@ public sealed class TrackingEngine(
         var endLocal = endDate.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
         var startUtc = TimeZoneInfo.ConvertTimeToUtc(startLocal, timeZone);
         var endUtc = TimeZoneInfo.ConvertTimeToUtc(endLocal, timeZone);
-        var totals = new Dictionary<string, (int Added, int Deleted)>(StringComparer.OrdinalIgnoreCase);
+        var totals = new Dictionary<string, (int Added, int Deleted, bool HasLineStatistics, bool IsBackedUp, long? OldSize, long? NewSize)>(StringComparer.OrdinalIgnoreCase);
         var snapshots = await _store.GetSnapshotsAsync(project.Id, cancellationToken);
         foreach (var snapshot in snapshots.Where(item =>
                      item.Kind != "baseline" && item.CreatedAt >= startUtc && item.CreatedAt < endUtc))
@@ -140,16 +182,29 @@ public sealed class TrackingEngine(
             foreach (var change in changes)
             {
                 var current = totals.GetValueOrDefault(change.Path);
-                totals[change.Path] = (current.Added + change.AddedLines, current.Deleted + change.DeletedLines);
+                totals[change.Path] = (
+                    current.Added + change.AddedLines,
+                    current.Deleted + change.DeletedLines,
+                    current.HasLineStatistics || change.HasLineStatistics,
+                    true,
+                    current.IsBackedUp ? current.OldSize : change.OldSize,
+                    change.NewSize);
             }
         }
 
         return activityFiles
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .Select(path => totals.TryGetValue(path, out var lines)
-                ? new ReportFileDetail(path, lines.Added, lines.Deleted, true)
-                : new ReportFileDetail(path, 0, 0, false))
+            .Select(path => totals.TryGetValue(path, out var detail)
+                ? new ReportFileDetail(
+                    path,
+                    detail.Added,
+                    detail.Deleted,
+                    detail.HasLineStatistics,
+                    detail.IsBackedUp,
+                    detail.OldSize,
+                    detail.NewSize)
+                : new ReportFileDetail(path, 0, 0, false, false, null, null))
             .ToArray();
     }
 

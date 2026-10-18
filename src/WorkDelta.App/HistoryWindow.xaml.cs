@@ -134,6 +134,6 @@ public partial class HistoryWindow : Window
         public SnapshotFileRow(SnapshotFileChange change) => Change = change;
         public SnapshotFileChange Change { get; }
         public string Path => Change.Path;
-        public string Summary => $"{Change.Status} · +{Change.AddedLines}  -{Change.DeletedLines}";
+        public string Summary => FileChangeFormatter.ForHistory(Change);
     }
 }

@@ -2,7 +2,8 @@ namespace WorkDelta.Core.Services;
 
 public sealed class PathPolicy
 {
-    private const long MaximumTrackedFileSize = 10 * 1024 * 1024;
+    private const long MaximumTextSnapshotSize = 10 * 1024 * 1024;
+    private const long MaximumBusinessDocumentSnapshotSize = 256L * 1024 * 1024;
 
     private static readonly HashSet<string> IgnoredDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -19,9 +20,22 @@ public sealed class PathPolicy
 
     private static readonly HashSet<string> SnapshotIgnoredExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".zip", ".7z", ".rar", ".gz", ".tar", ".png", ".jpg", ".jpeg",
-        ".gif", ".webp", ".mp3", ".mp4", ".mov", ".avi", ".pdf", ".db",
-        ".sqlite", ".sqlite3"
+        ".zip", ".7z", ".rar", ".gz", ".tar", ".mp3", ".wav", ".flac",
+        ".mp4", ".mov", ".avi", ".mkv", ".db", ".sqlite", ".sqlite3"
+    };
+
+    private static readonly HashSet<string> BusinessDocumentExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Microsoft Office and compatible suites.
+        ".doc", ".docx", ".docm", ".dot", ".dotx", ".dotm",
+        ".xls", ".xlsx", ".xlsm", ".xlsb", ".xlt", ".xltx", ".xltm",
+        ".ppt", ".pptx", ".pptm", ".pps", ".ppsx", ".ppsm", ".pot", ".potx", ".potm",
+        ".wps", ".wpt", ".et", ".ett", ".dps", ".dpt",
+        ".odt", ".ods", ".odp", ".rtf", ".one", ".vsd", ".vsdx", ".xmind",
+
+        // Final-form documents and common scanned evidence formats.
+        ".pdf", ".ofd", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+        ".bmp", ".tif", ".tiff", ".heic", ".heif"
     };
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string[]> _customRules =
@@ -127,7 +141,12 @@ public sealed class PathPolicy
         try
         {
             var info = new FileInfo(fullPath);
-            return info.Length <= MaximumTrackedFileSize && !LooksBinary(fullPath);
+            if (IsBusinessDocument(fullPath))
+            {
+                return info.Length <= MaximumBusinessDocumentSnapshotSize;
+            }
+
+            return info.Length <= MaximumTextSnapshotSize && !LooksBinary(fullPath);
         }
         catch (IOException)
         {
@@ -138,6 +157,9 @@ public sealed class PathPolicy
             return false;
         }
     }
+
+    public bool IsBusinessDocument(string path) =>
+        BusinessDocumentExtensions.Contains(Path.GetExtension(path));
 
     public bool IsActivityFile(string rootPath, string fullPath)
     {

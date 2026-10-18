@@ -70,6 +70,12 @@ dotnet run --project src/WorkDelta.App
 当前为 0.2 版本。工作时间是根据有效文件变化推断的“项目活动时间”，不等同于精确工时。
 软件不会自动联网检查更新；新版本继续通过 GitHub Releases 手动下载安装。
 
+## 文件备份范围
+
+- 单文件不超过 256 MB 的 Word、Excel、PowerPoint、WPS、OpenDocument、PDF、OFD、Visio、OneNote、XMind 和常见图片/扫描件会保存完整版本，可从历史检查点恢复。
+- 单文件不超过 10 MB 的文本类文件会保存版本，并提供新增、删除行数和文本差异。
+- ZIP/7z/RAR 等压缩包、音视频、数据库、程序产物和临时文件不保存内容版本；其中有业务意义的文件仍可出现在活动记录中，并明确标记为“仅记录、未备份”。
+
 ## License
 
 [MIT](LICENSE)
