@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "repository": "work-delta/workdelta",
-  "updatedAt": "2026-11-20T22:39:49.196Z",
+  "updatedAt": "2026-11-21T21:38:12.500Z",
   "releaseCount": 4,
   "totals": {
     "installerDownloads": 9,
@@ -248,6 +248,11 @@
     },
     {
       "date": "2026-11-21",
+      "installerDownloads": 9,
+      "packageDownloads": 11
+    },
+    {
+      "date": "2026-11-22",
       "installerDownloads": 9,
       "packageDownloads": 11
     }
